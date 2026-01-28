@@ -1,7 +1,5 @@
 {
-  "name": "Copy of AI Victory Quest: Learning Hub",
-  "description": "An interactive, gamified learning center exploring the key goals of AI implementation in organizations, featuring an AI Mentor powered by Gemini.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "name": "AI Victory Quest: Learning Hub",
+  "description": "An interactive, gamified learning center exploring the key goals of AI implementation in organizations.",
+  "requestFramePermissions": []
 }

@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Player, GameItem, GameState, QuestStep } from './types';
 import { MISSION_GOALS, CANVAS_WIDTH, CANVAS_HEIGHT, WALLS, PICKUP_ZONE, DROP_ZONE } from './constants';
-import { geminiService } from './services/gemini';
 import InfoModal from './components/InfoModal';
 
 const App: React.FC = () => {
@@ -24,29 +23,11 @@ const App: React.FC = () => {
   const [isMoving, setIsMoving] = useState(false);
   const [facingLeft, setFacingLeft] = useState(false);
   const [keys, setKeys] = useState<{ [key: string]: boolean }>({});
-  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-  const [isGeneratingBg, setIsGeneratingBg] = useState(false);
 
   const playerRef = useRef(player);
   useEffect(() => { playerRef.current = player; }, [player]);
 
   const activeQuestGoal = MISSION_GOALS[questIndex] || null;
-
-  useEffect(() => {
-    const loadBackground = async () => {
-      setIsGeneratingBg(true);
-      const prompt = "A top-down 2D pixel art professional basketball court. Hardwood floor with polished finish, center circle, three-point lines, and hoops at both ends. Vibrant indoor lighting, professional sports arena style.";
-      const imageUrl = await geminiService.generateBackground(prompt);
-      if (imageUrl) {
-        const img = new Image();
-        img.src = imageUrl;
-        img.onload = () => { setBgImage(img); setIsGeneratingBg(false); };
-      } else {
-        setIsGeneratingBg(false);
-      }
-    };
-    loadBackground();
-  }, []);
 
   const resetGame = () => {
     setPlayer({
@@ -108,6 +89,58 @@ const App: React.FC = () => {
     return false;
   };
 
+  const drawCourt = (ctx: CanvasRenderingContext2D) => {
+    // Floor
+    ctx.fillStyle = '#b45309'; // Rich Wood Amber
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Pattern (Floor boards)
+    ctx.strokeStyle = '#92400e';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < CANVAS_WIDTH; i += 40) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, CANVAS_HEIGHT);
+      ctx.stroke();
+    }
+
+    // Lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 3;
+    
+    // Boundary
+    ctx.strokeRect(40, 40, CANVAS_WIDTH - 80, CANVAS_HEIGHT - 80);
+    
+    // Half court line
+    ctx.beginPath();
+    ctx.moveTo(CANVAS_WIDTH / 2, 40);
+    ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT - 40);
+    ctx.stroke();
+    
+    // Center circle
+    ctx.beginPath();
+    ctx.arc(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 80, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Three-point arcs
+    // Left
+    ctx.beginPath();
+    ctx.arc(40, CANVAS_HEIGHT / 2, 220, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    // Right
+    ctx.beginPath();
+    ctx.arc(CANVAS_WIDTH - 40, CANVAS_HEIGHT / 2, 220, Math.PI / 2, -Math.PI / 2);
+    ctx.stroke();
+
+    // Keys
+    ctx.fillStyle = 'rgba(30, 58, 138, 0.3)'; // Blue tint for Maccabi key area
+    ctx.fillRect(40, CANVAS_HEIGHT / 2 - 80, 160, 160);
+    ctx.strokeRect(40, CANVAS_HEIGHT / 2 - 80, 160, 160);
+    
+    ctx.fillRect(CANVAS_WIDTH - 200, CANVAS_HEIGHT / 2 - 80, 160, 160);
+    ctx.strokeRect(CANVAS_WIDTH - 200, CANVAS_HEIGHT / 2 - 80, 160, 160);
+  };
+
   useEffect(() => {
     let animationFrameId: number;
     const update = () => {
@@ -129,7 +162,6 @@ const App: React.FC = () => {
       if (!checkCollision(nx, p.y, p.size)) finalX = nx;
       if (!checkCollision(finalX, ny, p.size)) finalY = ny;
 
-      // Interaction Logic
       if (questStep === QuestStep.PICKUP) {
         const dist = Math.hypot(finalX + p.size/2 - PICKUP_ZONE.x, finalY + p.size/2 - PICKUP_ZONE.y);
         if (dist < 45) {
@@ -154,10 +186,8 @@ const App: React.FC = () => {
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      if (bgImage) ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      else { ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); }
+      
+      drawCourt(ctx);
 
       const time = Date.now();
 
@@ -166,7 +196,6 @@ const App: React.FC = () => {
         ctx.save();
         ctx.globalAlpha = isActive ? 1 : 0.3;
         
-        // Zone Indicator
         const pulse = 1 + Math.sin(time/250) * 0.1;
         ctx.beginPath();
         ctx.ellipse(zone.x, zone.y, 40 * pulse, 20 * pulse, 0, 0, Math.PI*2);
@@ -176,14 +205,12 @@ const App: React.FC = () => {
         ctx.lineWidth = 3;
         ctx.stroke();
 
-        // Icon for Hoop or Rack
         ctx.fillStyle = 'white';
         ctx.font = '24px "Font Awesome 6 Free"';
         ctx.fontWeight = '900';
         ctx.textAlign = 'center';
         ctx.fillText(isHoop ? '\uf11e' : '\uf44b', zone.x, zone.y);
 
-        // Label
         ctx.font = 'bold 16px Assistant';
         const textWidth = ctx.measureText(zone.label).width;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
@@ -196,7 +223,6 @@ const App: React.FC = () => {
       drawZone(PICKUP_ZONE, '#fbbf24', questStep === QuestStep.PICKUP, false);
       drawZone(DROP_ZONE, activeQuestGoal?.color || '#f87171', questStep === QuestStep.DELIVER, true);
 
-      // Draw Basketball at rack
       if (questStep === QuestStep.PICKUP) {
         const hover = Math.sin(time/300) * 5;
         ctx.save();
@@ -206,7 +232,6 @@ const App: React.FC = () => {
         ctx.restore();
       }
 
-      // Draw Player
       const p = playerRef.current;
       const step = isMoving ? Math.sin(time / 100) * 5 : 0;
       const bob = Math.sin(time / 400) * 2;
@@ -238,7 +263,7 @@ const App: React.FC = () => {
     const render = () => { update(); draw(); animationFrameId = requestAnimationFrame(render); };
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [gameState, keys, bgImage, isMoving, facingLeft, questStep, questIndex, activeQuestGoal]);
+  }, [gameState, keys, isMoving, facingLeft, questStep, questIndex, activeQuestGoal]);
 
   const closeModal = () => {
     if (questIndex < MISSION_GOALS.length - 1) {
@@ -253,7 +278,6 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen flex flex-col items-center justify-center bg-slate-950 overflow-hidden">
-      {/* Header UI */}
       <div className="absolute top-8 w-full px-8 flex justify-between items-start pointer-events-none z-10">
         <div className="bg-black/80 p-4 rounded-xl border border-yellow-500/50 backdrop-blur-sm">
           <h1 className="text-2xl font-bold text-yellow-400">תוכנית המשחק של מכבי: הסלאם הגדול</h1>
@@ -276,20 +300,10 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Main Canvas */}
       <div className="relative">
         <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="rounded-3xl shadow-2xl border-4 border-slate-700 bg-slate-900" />
-        {isGeneratingBg && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-3xl backdrop-blur-md">
-            <div className="text-center">
-              <i className="fa-solid fa-basketball text-6xl text-orange-500 animate-bounce mb-4"></i>
-              <p className="text-white font-bold text-xl">ה-AI מכין את המגרש...</p>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* States Overlays */}
       {gameState === GameState.START && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-950/95 z-40 backdrop-blur-sm">
           <div className="text-center p-12 max-w-xl bg-black border-2 border-yellow-500/50 rounded-3xl shadow-[0_0_50px_rgba(251,191,36,0.2)]">
@@ -303,7 +317,7 @@ const App: React.FC = () => {
               </p>
               <p className="text-yellow-500 text-xs font-bold mt-4 animate-pulse">לחץ על החיצים או Enter כדי לעלות למגרש</p>
             </div>
-            <button onClick={() => setGameState(GameState.PLAYING)} disabled={isGeneratingBg} className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black text-xl py-4 px-12 rounded-2xl transition-all shadow-xl hover:scale-105 active:scale-95">
+            <button onClick={() => setGameState(GameState.PLAYING)} className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black text-xl py-4 px-12 rounded-2xl transition-all shadow-xl hover:scale-105 active:scale-95">
               עולים למגרש
             </button>
           </div>
@@ -335,8 +349,8 @@ const App: React.FC = () => {
       )}
 
       <div className="absolute bottom-6 text-slate-500 text-xs text-center font-medium">
-        Victory Pursuit Mode • Slam Dunk v7.0<br/>
-        AI Arena Visualization by Gemini 2.5 Flash Image • Keyboard Full Control
+        Victory Pursuit Mode • Slam Dunk v8.0<br/>
+        Pure Canvas Rendering • Local Logic • Keyboard Full Control
       </div>
     </div>
   );
